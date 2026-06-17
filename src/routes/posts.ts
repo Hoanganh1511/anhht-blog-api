@@ -46,6 +46,7 @@ router.get("/", async (req, res) => {
 // POST /posts — tạo bài mới (admin)
 router.post("/", requireAdmin, async (req, res) => {
   const body = req.body;
+  const categoryIds: string[] = body.categoryIds ?? [];
   const post = await prisma.post.create({
     data: {
       title: body.title,
@@ -58,7 +59,11 @@ router.post("/", requireAdmin, async (req, res) => {
       metaTitle: body.metaTitle,
       metaDescription: body.metaDescription,
       ogImage: body.ogImage,
+      ...(categoryIds.length > 0 && {
+        categories: { create: categoryIds.map((id) => ({ categoryId: id })) },
+      }),
     },
+    include: { categories: { include: { category: true } } },
   });
   res.status(201).json(post);
 });
@@ -86,23 +91,34 @@ router.get("/:id", async (req, res) => {
 router.patch("/:id", requireAdmin, async (req, res) => {
   const { id } = req.params;
   const body = req.body;
-  const post = await prisma.post.update({
-    where: { id },
-    data: {
-      ...(body.title && { title: body.title }),
-      ...(body.slug && { slug: body.slug }),
-      ...(body.excerpt !== undefined && { excerpt: body.excerpt }),
-      ...(body.content !== undefined && { content: body.content }),
-      ...(body.coverImage !== undefined && { coverImage: body.coverImage }),
-      ...(body.status && {
-        status: body.status,
-        publishedAt: body.status === "PUBLISHED" ? new Date() : undefined,
-      }),
-      ...(body.metaTitle !== undefined && { metaTitle: body.metaTitle }),
-      ...(body.metaDescription !== undefined && { metaDescription: body.metaDescription }),
-      ...(body.ogImage !== undefined && { ogImage: body.ogImage }),
-    },
-  });
+  const categoryIds: string[] | undefined = body.categoryIds;
+
+  const [post] = await prisma.$transaction([
+    prisma.post.update({
+      where: { id },
+      data: {
+        ...(body.title && { title: body.title }),
+        ...(body.slug && { slug: body.slug }),
+        ...(body.excerpt !== undefined && { excerpt: body.excerpt }),
+        ...(body.content !== undefined && { content: body.content }),
+        ...(body.coverImage !== undefined && { coverImage: body.coverImage }),
+        ...(body.status && {
+          status: body.status,
+          publishedAt: body.status === "PUBLISHED" ? new Date() : undefined,
+        }),
+        ...(body.metaTitle !== undefined && { metaTitle: body.metaTitle }),
+        ...(body.metaDescription !== undefined && { metaDescription: body.metaDescription }),
+        ...(body.ogImage !== undefined && { ogImage: body.ogImage }),
+        ...(categoryIds !== undefined && {
+          categories: {
+            deleteMany: {},
+            create: categoryIds.map((cid) => ({ categoryId: cid })),
+          },
+        }),
+      },
+      include: { categories: { include: { category: true } } },
+    }),
+  ]);
   res.json(post);
 });
 

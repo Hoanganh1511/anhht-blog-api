@@ -1,18 +1,26 @@
+import { randomUUID } from "crypto";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const s3 = new S3Client({
-  endpoint: process.env.S3_ENDPOINT,
-  region: process.env.S3_REGION ?? "auto",
-  credentials: {
-    accessKeyId: process.env.S3_ACCESS_KEY!,
-    secretAccessKey: process.env.S3_SECRET_KEY!,
-  },
-  forcePathStyle: true,
-});
+// Lazy init — đọc process.env khi request đầu tiên đến (sau khi dotenv đã chạy)
+let _s3: S3Client | undefined;
+function getS3(): S3Client {
+  if (!_s3) {
+    _s3 = new S3Client({
+      region: process.env.BLOG_S3_REGION ?? "us-east-1",
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
+    });
+  }
+  return _s3;
+}
 
-const BUCKET = process.env.S3_BUCKET!;
-const PUBLIC_URL = process.env.S3_PUBLIC_URL!;
+function getBucket(): string { return process.env.S3_BUCKET!; }
+function getPublicUrl(): string { return process.env.CDN_BASE_URL!.replace(/\/$/, ""); }
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_SIZE_BYTES = 5 * 1024 * 1024;
@@ -36,21 +44,20 @@ export async function createPresignedUpload(
   }
 
   const ext = filename.split(".").pop() ?? "bin";
-  const key = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const key = `uploads/${randomUUID()}.${ext}`;
 
   const command = new PutObjectCommand({
-    Bucket: BUCKET,
+    Bucket: getBucket(),
     Key: key,
     ContentType: contentType,
-    ContentLength: size,
   });
 
-  const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
-  const publicUrl = `${PUBLIC_URL}/${key}`;
+  const uploadUrl = await getSignedUrl(getS3(), command, { expiresIn: 300 });
+  const publicUrl = `${getPublicUrl()}/${key}`;
 
   return { uploadUrl, key, publicUrl };
 }
 
 export async function deleteObject(key: string): Promise<void> {
-  await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+  await getS3().send(new DeleteObjectCommand({ Bucket: getBucket(), Key: key }));
 }

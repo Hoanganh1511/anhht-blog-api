@@ -27,7 +27,10 @@ router.get("/:slug", async (req, res) => {
   const page = Math.max(1, parseInt((req.query.page as string) ?? "1"));
   const pageSize = 12;
 
-  const category = await prisma.category.findUnique({ where: { slug } });
+  const category = await prisma.category.findUnique({
+    where: { slug },
+    include: { parent: true },
+  });
   if (!category) {
     res.status(404).json({ error: "Not found" });
     return;

@@ -1,4 +1,5 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+dotenv.config({ override: true });
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -13,19 +14,21 @@ import { errorHandler } from "./middleware/error";
 const app = express();
 const PORT = process.env.PORT ?? 4000;
 
+app.set("trust proxy", true);
+
 // CORS: cho phép Next.js frontend gửi cookie
 app.use(
   cors({
     origin: process.env.FRONTEND_URL ?? "http://localhost:3000",
     credentials: true,
-  })
+  }),
 );
 
 app.use(express.json());
 app.use(cookieParser());
 
 // Auth (phải trước các route khác, không cần cookieParser vì ExpressAuth tự xử lý)
-app.use("/auth/*splat", authHandler);
+app.use("/auth", authHandler);
 
 // Routes
 app.use("/posts", postsRouter);

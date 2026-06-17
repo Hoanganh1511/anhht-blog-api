@@ -94,11 +94,14 @@ model Post {
 }
 
 model Category {
-  id    String           @id @default(cuid())
-  name  String
-  slug  String           @unique
-  order Int              @default(0)
-  posts CategoryOnPost[]
+  id       String           @id @default(cuid())
+  name     String
+  slug     String           @unique
+  order    Int              @default(0)
+  parentId String?
+  parent   Category?        @relation("CategoryChildren", fields: [parentId], references: [id])
+  children Category[]       @relation("CategoryChildren")
+  posts    CategoryOnPost[]
 }
 
 model Tag {
