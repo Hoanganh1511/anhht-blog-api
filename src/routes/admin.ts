@@ -4,6 +4,18 @@ import { requireAdmin } from "../middleware/auth";
 
 const router = Router();
 
+// GET /admin/categories — cây danh mục cho post editor (không kèm posts)
+router.get("/categories", requireAdmin, async (_req, res) => {
+  const parents = await prisma.category.findMany({
+    where: { parentId: null },
+    orderBy: { order: "asc" },
+    include: {
+      children: { orderBy: { order: "asc" } },
+    },
+  });
+  res.json(parents);
+});
+
 // GET /admin/posts — toàn bộ bài (kể cả draft)
 router.get("/posts", requireAdmin, async (_req, res) => {
   const posts = await prisma.post.findMany({

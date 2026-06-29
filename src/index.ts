@@ -17,9 +17,19 @@ const PORT = process.env.PORT ?? 4000;
 app.set("trust proxy", true);
 
 // CORS: cho phép Next.js frontend gửi cookie
+const allowedOrigin = process.env.FRONTEND_URL;
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL ?? "http://localhost:3000",
+    origin: allowedOrigin
+      ? allowedOrigin
+      : (origin, cb) => {
+          // Dev: cho phép localhost và mọi IP local (192.168.x.x, 10.x.x.x, v.v.)
+          if (!origin || /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) {
+            cb(null, true);
+          } else {
+            cb(new Error("Not allowed by CORS"));
+          }
+        },
     credentials: true,
   }),
 );
