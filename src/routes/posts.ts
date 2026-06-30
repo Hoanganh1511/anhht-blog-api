@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
-import { requireAuth, requireAdmin } from "../middleware/auth";
+import { requireAuth, requireAdmin, optionalAuth } from "../middleware/auth";
 
 const router = Router();
 
@@ -71,8 +71,10 @@ router.post("/", requireAdmin, async (req, res) => {
 });
 
 // GET /posts/:id — chi tiết bài (by id hoặc slug)
-router.get("/:id", async (req, res) => {
+router.get("/:id", optionalAuth, async (req, res) => {
   const { id } = req.params;
+  const userId = req.user?.id ?? null;
+
   const post = await prisma.post.findFirst({
     where: { OR: [{ id }, { slug: id }], status: "PUBLISHED" },
     include: {
@@ -86,7 +88,15 @@ router.get("/:id", async (req, res) => {
     res.status(404).json({ error: "Not found" });
     return;
   }
-  res.json(post);
+
+  const [likedByMe, savedByMe] = userId
+    ? await Promise.all([
+        prisma.postLike.findUnique({ where: { postId_userId: { postId: post.id, userId } } }),
+        prisma.savedPost.findUnique({ where: { postId_userId: { postId: post.id, userId } } }),
+      ])
+    : [null, null];
+
+  res.json({ ...post, likedByMe: !!likedByMe, savedByMe: !!savedByMe });
 });
 
 // PATCH /posts/:id — cập nhật bài (admin)
@@ -143,11 +153,30 @@ router.post("/:id/like", requireAuth, async (req, res) => {
 
   if (existing) {
     await prisma.postLike.delete({ where: { postId_userId: { postId, userId } } });
-    res.json({ liked: false });
   } else {
     await prisma.postLike.create({ data: { postId, userId } });
-    res.json({ liked: true });
   }
+
+  const likesCount = await prisma.postLike.count({ where: { postId } });
+  res.json({ liked: !existing, likesCount });
+});
+
+// POST /posts/:id/save — toggle save
+router.post("/:id/save", requireAuth, async (req, res) => {
+  const postId = req.params.id;
+  const userId = req.user!.id;
+
+  const existing = await prisma.savedPost.findUnique({
+    where: { postId_userId: { postId, userId } },
+  });
+
+  if (existing) {
+    await prisma.savedPost.delete({ where: { postId_userId: { postId, userId } } });
+  } else {
+    await prisma.savedPost.create({ data: { postId, userId } });
+  }
+
+  res.json({ saved: !existing });
 });
 
 // POST /posts/:id/view — tăng lượt xem
