@@ -74,7 +74,9 @@ model Post {
   coverImage  String?
   content     Json
   status      PostStatus @default(DRAFT)
-  publishedAt DateTime?
+  featured     Boolean    @default(false)
+  coverImages  String[]
+  publishedAt  DateTime?
   viewCount   Int        @default(0)
   shareCount  Int        @default(0)
 
