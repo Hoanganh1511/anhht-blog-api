@@ -8,6 +8,7 @@ import categoriesRouter from "./routes/categories";
 import commentsRouter from "./routes/comments";
 import uploadRouter from "./routes/upload";
 import adminRouter from "./routes/admin";
+import usersRouter from "./routes/users";
 import { authHandler } from "./routes/auth";
 import { errorHandler } from "./middleware/error";
 
@@ -46,6 +47,7 @@ app.use("/categories", categoriesRouter);
 app.use("/comments", commentsRouter);
 app.use("/upload", uploadRouter);
 app.use("/admin", adminRouter);
+app.use("/users", usersRouter);
 
 // Logout — xóa cookie session
 app.post("/logout", (_req, res) => {
