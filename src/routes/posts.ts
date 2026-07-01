@@ -163,8 +163,8 @@ router.post("/:id/like", requireAuth, async (req, res) => {
 
 // POST /posts/:id/save — toggle save
 router.post("/:id/save", requireAuth, async (req, res) => {
-  const postId = req.params.id;
-  const userId = req.user!.id;
+  const postId = req.params.id as string;
+  const userId = req.user!.id as string;
 
   const existing = await prisma.savedPost.findUnique({
     where: { postId_userId: { postId, userId } },
@@ -225,8 +225,8 @@ router.post("/:id/comments", requireAuth, async (req, res) => {
 
   const comment = await prisma.comment.create({
     data: {
-      postId: req.params.id,
-      userId: req.user!.id,
+      postId: req.params.id as string,
+      userId: req.user!.id as string,
       content: body.content,
       parentId: body.parentId ?? null,
       images: body.images ?? [],
