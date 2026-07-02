@@ -29,6 +29,7 @@ model User {
   sessions      Session[]
   comments      Comment[]
   postLikes     PostLike[]
+  commentLikes  CommentLike[]
   savedPosts    SavedPost[]
   createdAt     DateTime   @default(now())
 }
@@ -148,8 +149,19 @@ model Comment {
   user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
   replies Comment[] @relation("CommentReplies")
+  likes   CommentLike[]
 
   @@index([postId, createdAt])
+}
+
+model CommentLike {
+  commentId String
+  userId    String
+  createdAt DateTime @default(now())
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([commentId, userId])
 }
 
 model PostLike {

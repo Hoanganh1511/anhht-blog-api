@@ -199,41 +199,117 @@ router.post("/:id/share", async (req, res) => {
   res.json({ shareCount: post.shareCount });
 });
 
-// GET /posts/:id/comments — danh sách comment
-router.get("/:id/comments", async (req, res) => {
-  const comments = await prisma.comment.findMany({
-    where: { postId: req.params.id, parentId: null },
-    orderBy: { createdAt: "asc" },
-    include: {
-      user: { select: { id: true, name: true, image: true } },
-      replies: {
-        orderBy: { createdAt: "asc" },
-        include: { user: { select: { id: true, name: true, image: true } } },
+// ── Comments ──────────────────────────────────────────────
+
+const COMMENT_MAX_LENGTH = 500;
+const COMMENT_COOLDOWN_MS = 15_000; // chống spam: 15s giữa 2 bình luận
+const COMMENT_PAGE_SIZE = 10;
+
+const commentUserSelect = { select: { id: true, name: true, image: true } };
+
+// Gom likes/_count thành likesCount + likedByMe phẳng cho client
+function serializeComment(c: {
+  likes?: { userId: string }[];
+  _count?: { likes: number };
+  replies?: unknown[];
+  [key: string]: unknown;
+}): Record<string, unknown> {
+  const { likes, _count, replies, ...rest } = c;
+  return {
+    ...rest,
+    likesCount: _count?.likes ?? 0,
+    likedByMe: (likes?.length ?? 0) > 0,
+    ...(replies !== undefined && {
+      replies: (replies as Parameters<typeof serializeComment>[0][]).map(serializeComment),
+    }),
+  };
+}
+
+// GET /posts/:id/comments — danh sách comment, cursor pagination, mới nhất trước
+router.get("/:id/comments", optionalAuth, async (req, res) => {
+  const postId = req.params.id as string;
+  const userId = req.user?.id;
+  const cursor = req.query.cursor as string | undefined;
+
+  const commentInclude = {
+    user: commentUserSelect,
+    _count: { select: { likes: true } },
+    ...(userId && { likes: { where: { userId }, select: { userId: true } } }),
+  };
+
+  const [comments, total] = await Promise.all([
+    prisma.comment.findMany({
+      where: { postId, parentId: null },
+      orderBy: { createdAt: "desc" },
+      take: COMMENT_PAGE_SIZE + 1, // lấy dư 1 để biết còn trang sau không
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+      include: {
+        ...commentInclude,
+        replies: { orderBy: { createdAt: "asc" }, include: commentInclude },
       },
-    },
+    }),
+    prisma.comment.count({ where: { postId } }),
+  ]);
+
+  const hasMore = comments.length > COMMENT_PAGE_SIZE;
+  const page = hasMore ? comments.slice(0, COMMENT_PAGE_SIZE) : comments;
+
+  res.json({
+    comments: page.map(serializeComment),
+    total,
+    nextCursor: hasMore ? page[page.length - 1].id : null,
   });
-  res.json(comments);
 });
 
 // POST /posts/:id/comments — tạo comment
 router.post("/:id/comments", requireAuth, async (req, res) => {
-  const body = req.body;
-  if (!body.content?.trim()) {
+  const postId = req.params.id as string;
+  const userId = req.user!.id;
+  const content = String(req.body.content ?? "").trim();
+
+  if (!content) {
     res.status(400).json({ error: "Nội dung không được trống" });
     return;
   }
+  if (content.length > COMMENT_MAX_LENGTH) {
+    res.status(400).json({ error: `Bình luận tối đa ${COMMENT_MAX_LENGTH} ký tự` });
+    return;
+  }
+
+  const recentComment = await prisma.comment.findFirst({
+    where: {
+      userId,
+      createdAt: { gt: new Date(Date.now() - COMMENT_COOLDOWN_MS) },
+    },
+    select: { id: true },
+  });
+  if (recentComment) {
+    res.status(429).json({ error: "Bạn bình luận quá nhanh, vui lòng thử lại sau vài giây" });
+    return;
+  }
+
+  // Reply tối đa 1 cấp: reply-của-reply gắn về comment gốc
+  let parentId: string | null = null;
+  if (req.body.parentId) {
+    const parent = await prisma.comment.findUnique({
+      where: { id: req.body.parentId as string },
+      select: { id: true, postId: true, parentId: true },
+    });
+    if (!parent || parent.postId !== postId) {
+      res.status(400).json({ error: "Bình luận gốc không tồn tại" });
+      return;
+    }
+    parentId = parent.parentId ?? parent.id;
+  }
 
   const comment = await prisma.comment.create({
-    data: {
-      postId: req.params.id as string,
-      userId: req.user!.id as string,
-      content: body.content,
-      parentId: body.parentId ?? null,
-      images: body.images ?? [],
+    data: { postId, userId, content, parentId, images: req.body.images ?? [] },
+    include: {
+      user: commentUserSelect,
+      _count: { select: { likes: true } },
     },
-    include: { user: { select: { id: true, name: true, image: true } } },
   });
-  res.status(201).json(comment);
+  res.status(201).json(serializeComment(comment));
 });
 
 export default router;
